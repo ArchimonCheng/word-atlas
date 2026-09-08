@@ -276,6 +276,18 @@
   @media(prefers-reduced-motion:reduce){
     .ms-hero{transition:none}
   }
+
+  /* ---------- 用户自填 Access Secret ---------- */
+  .secret-panel{border-bottom:1px solid var(--line);background:var(--panel)}
+  .secret-row{display:flex;align-items:center;gap:10px;padding:11px 0;flex-wrap:wrap}
+  .slabel{font-size:13px;color:var(--muted);font-weight:600;white-space:nowrap}
+  #secretInput{flex:1 1 300px;min-width:200px;font-size:13px;background:var(--inset);
+    color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px 12px;
+    font-family:"DejaVu Sans Mono",Consolas,monospace}
+  #secretInput:focus{outline:none;border-color:var(--accent)}
+  #secretInput::placeholder{color:var(--ph)}
+  #secretStatus{font-size:12.5px;color:var(--muted)}
+  button.small{padding:8px 14px;font-size:13.5px}
   .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
 <script>
@@ -300,12 +312,25 @@
     <span class="tag">知乎黑客松 2026</span>
     <span class="tag">直答驱动</span>
     <div class="spacer"></div>
+    <button id="secretBtn" aria-label="使用自己的 Access Secret"
+            title="使用自己的 Access Secret">🔑</button>
     <button id="themeToggle" aria-label="切换深色/浅色模式" title="切换主题">🌓</button>
     <span id="who" class="note"></span>
     <button id="login" hidden>用知乎账号登录</button>
     <button id="logout" hidden>退出</button>
   </div>
 </header>
+
+  <div id="secretPanel" class="secret-panel" hidden>
+    <div class="wrap secret-row">
+      <span class="slabel">🔑 Access Secret</span>
+      <input id="secretInput" type="password" spellcheck="false" autocomplete="off"
+             placeholder="可选：粘贴你自己的 Access Secret，检索将按你的额度计">
+      <button id="secretSave" class="primary small">使用</button>
+      <button id="secretClear">清除</button>
+      <span id="secretStatus" class="note"></span>
+    </div>
+  </div>
 
 <section class="hero">
   <div class="wrap">
@@ -703,12 +728,56 @@ async function loadConfig(){
     $('#login').hidden = !c.oauth_enabled || c.logged_in;
     $('#logout').hidden = !c.logged_in;
     $('#who').textContent = c.logged_in ? '已用知乎账号登录' : '';
-    if(!c.access_secret_configured)
-      alertBox('err','后端未配置 Access Secret，直答与搜索不可用。设置 ZHIHU_ACCESS_SECRET 后重启。');
+    updateSecretUI(c);
+    if(!c.access_secret_configured && !c.user_secret_configured)
+      alertBox('err','未配置 Access Secret。请在页面上方 🔑 填入你自己的 Secret，或设置 ZHIHU_ACCESS_SECRET 环境变量后重启。');
     else if(!c.oauth_enabled)
       alertBox('warn','OAuth 未配置，登录入口不可用；词汇分析不受影响。');
   }catch{ alertBox('err','无法读取后端配置，服务可能未启动。'); }
 }
+
+/* ================= 用户自填 Access Secret ================= */
+function updateSecretUI(c){
+  const st = $('#secretStatus');
+  if(c.user_secret_configured){
+    st.textContent = '当前使用：你的 Access Secret';
+    $('#secretClear').hidden = false;
+  }else if(c.access_secret_configured){
+    st.textContent = '当前使用：后端环境变量 Secret';
+    $('#secretClear').hidden = true;
+  }else{
+    st.textContent = '尚未配置 Secret，请填入后使用';
+    $('#secretClear').hidden = true;
+  }
+}
+$('#secretBtn').addEventListener('click', ()=>{
+  const p = $('#secretPanel');
+  p.hidden = !p.hidden;
+  if(!p.hidden) $('#secretInput').focus();
+});
+$('#secretSave').addEventListener('click', async ()=>{
+  const secret = $('#secretInput').value.trim();
+  if(!secret){ alertBox('warn','请输入 Access Secret'); return; }
+  try{
+    const r = await fetch('/api/secret', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({secret})
+    });
+    if(!r.ok){ alertBox('err','保存失败（HTTP '+r.status+'）'); return; }
+    $('#secretInput').value = '';
+    await loadConfig();
+  }catch{ alertBox('err','保存失败，网络错误'); }
+});
+$('#secretClear').addEventListener('click', async ()=>{
+  try{
+    const r = await fetch('/api/secret', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({secret:''})
+    });
+    if(!r.ok){ alertBox('err','清除失败（HTTP '+r.status+'）'); return; }
+    await loadConfig();
+  }catch{ alertBox('err','清除失败，网络错误'); }
+});
 
 /* ================= 额度 ================= */
 async function loadQuota(){

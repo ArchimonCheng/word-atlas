@@ -207,9 +207,10 @@ def fingerprint(value: str) -> str:
     return f"len={len(value)} sha256:{digest}"
 
 
-def api_headers(oauth_token: str | None = None) -> dict:
+def api_headers(secret: str | None = None, oauth_token: str | None = None) -> dict:
+    # secret 为空时回退到环境变量的 ACCESS_SECRET
     headers = {
-        "Authorization": f"Bearer {ACCESS_SECRET}",
+        "Authorization": f"Bearer {secret or ACCESS_SECRET}",
         "X-Request-Timestamp": str(int(time.time())),
         "Content-Type": "application/json",
     }
@@ -315,9 +316,36 @@ def oauth_ready() -> bool:
     return bool(APP_ID and APP_KEY and REDIRECT_URI)
 
 
+def secret_scope(secret: str) -> str:
+    """缓存隔离 scope：不同 Access Secret 的缓存互不串（尤其 quota）。
+
+    返回 sha256 前 8 位，不含明文。空 secret 返回 "none"。
+    """
+    if not secret:
+        return "none"
+    return hashlib.sha256(secret.encode()).hexdigest()[:8]
+
+
+def set_session_secret(sid: str | None, secret: str) -> str:
+    """把用户自填的 Access Secret 写入会话，返回会话 id。
+
+    若已存在有效会话（可能是 OAuth 会话），则在该会话上追加 secret 字段；
+    否则新建一个只含 secret 的会话。secret 仅存内存，进程重启即失效。
+    """
+    if sid:
+        with SESSION_LOCK:
+            if sid in SESSIONS:
+                SESSIONS[sid]["access_secret"] = secret
+                return sid
+    sid = secrets.token_urlsafe(24)
+    with SESSION_LOCK:
+        SESSIONS[sid] = {"access_secret": secret, "created": time.time()}
+    return sid
+
+
 # -------------------------------------------------------------- upstream calls
 
-def fetch_sources(word: str, gloss: str = "") -> dict:
+def fetch_sources(word: str, gloss: str = "", secret: str | None = None) -> dict:
     """知乎站内搜索，为档案提供社区原始来源。
 
     检索词用「词汇本身」或「词汇 + 中文释义」，不再附加「词根 用法」之类的
@@ -326,7 +354,7 @@ def fetch_sources(word: str, gloss: str = "") -> dict:
     query = f"{word} {gloss}".strip() if gloss else f"{word} 英语"
     params = {"Query": query, "Count": 5}
     resp = requests.get(ZHIHU_SEARCH_URL, params=params,
-                        headers=api_headers(), timeout=20)
+                        headers=api_headers(secret=secret), timeout=20)
     if resp.status_code != 200:
         return {"ok": False, "status": resp.status_code, "items": []}
     body = resp.json()
@@ -340,7 +368,7 @@ def fetch_sources(word: str, gloss: str = "") -> dict:
     }
 
 
-def fetch_global_sources(word: str, gloss: str = "") -> dict:
+def fetch_global_sources(word: str, gloss: str = "", secret: str | None = None) -> dict:
     """全网搜索，为档案提供知乎之外的权威来源。
 
     与站内搜索分开调用：站内给社区经验，全网给词典、外刊、机构来源。
@@ -350,7 +378,7 @@ def fetch_global_sources(word: str, gloss: str = "") -> dict:
     # 全网搜索 Count 上限 20（站内是 10）
     params = {"Query": query, "Count": 8}
     resp = requests.get(GLOBAL_SEARCH_URL, params=params,
-                        headers=api_headers(), timeout=20)
+                        headers=api_headers(secret=secret), timeout=20)
     if resp.status_code != 200:
         return {"ok": False, "status": resp.status_code, "items": []}
     data = (resp.json() or {}).get("Data") or {}
@@ -370,18 +398,18 @@ def strip_em(text: str) -> str:
     return out
 
 
-def fetch_quota() -> dict:
-    resp = requests.get(QUOTA_URL, headers=api_headers(), timeout=15)
+def fetch_quota(secret: str | None = None) -> dict:
+    resp = requests.get(QUOTA_URL, headers=api_headers(secret=secret), timeout=15)
     if resp.status_code != 200:
         return {"ok": False, "status": resp.status_code}
     return {"ok": True, "data": resp.json().get("Data")}
 
 
-def fetch_user_contents(oauth_token: str, limit: int = 5) -> dict:
+def fetch_user_contents(oauth_token: str, limit: int = 5, secret: str | None = None) -> dict:
     params = {"ContentType": "all", "Limit": limit,
               "SortField": "ts", "SortOrder": "desc"}
     resp = requests.get(USER_CONTENTS_URL, params=params,
-                        headers=api_headers(oauth_token), timeout=20)
+                        headers=api_headers(secret=secret, oauth_token=oauth_token), timeout=20)
     if resp.status_code in (401, 403):
         return {"ok": False, "reason": "oauth_invalid", "status": resp.status_code}
     if resp.status_code != 200:
@@ -453,6 +481,13 @@ class Handler(BaseHTTPRequestHandler):
     def _client_ip(self) -> str:
         return self.client_address[0] if self.client_address else "unknown"
 
+    def _request_secret(self) -> str:
+        """当前请求实际使用的 Access Secret：用户会话自填的优先，否则环境变量。"""
+        sess = get_session(self._sid())
+        if sess and sess.get("access_secret"):
+            return sess["access_secret"]
+        return ACCESS_SECRET
+
     # ---- routing
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -483,6 +518,8 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/analyze":
             return self._api_analyze()
+        if parsed.path == "/api/secret":
+            return self._api_secret()
         if parsed.path == "/auth/logout":
             drop_session(self._sid())
             return self._json(200, {"ok": True}, {
@@ -509,10 +546,38 @@ class Handler(BaseHTTPRequestHandler):
                    types.get(target.suffix, "application/octet-stream"), extra)
 
     # ---- api
+    def _api_secret(self):
+        """接收用户自填的 Access Secret，存到会话，供后续请求按该用户检索。
+
+        空 secret 视为清除，回退到环境变量。secret 仅存内存，进程重启即失效。
+        """
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, json.JSONDecodeError):
+            return self._json(400, {"error": "bad_json"})
+        secret = (payload.get("secret") or "").strip()
+        sid = self._sid()
+        if not secret:
+            # 清除自填 secret，保留 OAuth 会话等其他字段
+            with SESSION_LOCK:
+                sess = SESSIONS.get(sid) if sid else None
+                if sess:
+                    sess.pop("access_secret", None)
+            return self._json(200, {"ok": True, "cleared": True,
+                                    "fallback": "env" if ACCESS_SECRET else "none"})
+        if len(secret) > 128:
+            return self._json(400, {"error": "secret_too_long"})
+        new_sid = set_session_secret(sid, secret)
+        extra = {"Set-Cookie": session_cookie(new_sid)}
+        return self._json(200, {"ok": True, "source": "user_session",
+                                "fingerprint": fingerprint(secret)}, extra)
+
     def _api_config(self):
         sess = get_session(self._sid())
         self._json(200, {
             "access_secret_configured": bool(ACCESS_SECRET),
+            "user_secret_configured": bool(sess and sess.get("access_secret")),
             "oauth_enabled": oauth_ready(),
             "logged_in": bool(sess),
             "models": list(MODELS.keys()),
@@ -539,9 +604,11 @@ class Handler(BaseHTTPRequestHandler):
         })
 
     def _api_quota(self):
-        if not ACCESS_SECRET:
+        secret = self._request_secret()
+        if not secret:
             return self._json(503, {"error": "access_secret_missing"})
-        result, cached = CACHE.get_or_call("quota", fetch_quota)
+        result, cached = CACHE.get_or_call(
+            f"quota:{secret_scope(secret)}", lambda: fetch_quota(secret=secret))
         if not result.get("ok"):
             return self._json(502, {"error": "quota_unavailable",
                                     "status": result.get("status")})
@@ -552,13 +619,14 @@ class Handler(BaseHTTPRequestHandler):
         gloss = (query.get("gloss", [""])[0] or "").strip()[:32]
         if not word:
             return self._json(400, {"error": "word_required"})
-        if not ACCESS_SECRET:
+        secret = self._request_secret()
+        if not secret:
             return self._json(503, {"error": "access_secret_missing"})
         if rate_limited(self._client_ip()):
             return self._json(429, {"error": "rate_limited"})
-        key = f"src:{word.lower()}:{gloss}"
+        key = f"src:{secret_scope(secret)}:{word.lower()}:{gloss}"
         result, cached = CACHE.get_or_call(
-            key, lambda: fetch_sources(word, gloss))
+            key, lambda: fetch_sources(word, gloss, secret=secret))
         if not result.get("ok"):
             return self._json(502, {"error": "search_unavailable",
                                     "status": result.get("status")})
@@ -575,13 +643,14 @@ class Handler(BaseHTTPRequestHandler):
         gloss = (query.get("gloss", [""])[0] or "").strip()[:32]
         if not word:
             return self._json(400, {"error": "word_required"})
-        if not ACCESS_SECRET:
+        secret = self._request_secret()
+        if not secret:
             return self._json(503, {"error": "access_secret_missing"})
         if rate_limited(self._client_ip()):
             return self._json(429, {"error": "rate_limited"})
-        key = f"glb:{word.lower()}:{gloss}"
+        key = f"glb:{secret_scope(secret)}:{word.lower()}:{gloss}"
         result, cached = CACHE.get_or_call(
-            key, lambda: fetch_global_sources(word, gloss))
+            key, lambda: fetch_global_sources(word, gloss, secret=secret))
         if not result.get("ok"):
             return self._json(502, {"error": "search_unavailable",
                                     "status": result.get("status")})
@@ -607,7 +676,8 @@ class Handler(BaseHTTPRequestHandler):
         sess = get_session(self._sid())
         if not sess:
             return self._json(401, {"error": "login_required"})
-        result = fetch_user_contents(sess["oauth_token"])
+        result = fetch_user_contents(sess["oauth_token"],
+                                      secret=self._request_secret())
         if not result.get("ok"):
             if result.get("reason") == "oauth_invalid":
                 drop_session(self._sid())
@@ -622,7 +692,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _api_analyze(self):
         """把 Skill 交给知乎直答执行，SSE 流式回传档案。"""
-        if not ACCESS_SECRET:
+        secret = self._request_secret()
+        if not secret:
             return self._json(503, {"error": "access_secret_missing"})
         if rate_limited(self._client_ip(), limit=8):
             return self._json(429, {"error": "rate_limited"})
@@ -639,8 +710,8 @@ class Handler(BaseHTTPRequestHandler):
         gloss = (payload.get("gloss") or "").strip()[:32]
 
         # 缓存键与 /api/sources 保持一致，避免同一词被查两次白耗额度
-        src, _ = CACHE.get_or_call(f"src:{word.lower()}:{gloss}",
-                                   lambda: fetch_sources(word, gloss))
+        src, _ = CACHE.get_or_call(f"src:{secret_scope(secret)}:{word.lower()}:{gloss}",
+                                   lambda: fetch_sources(word, gloss, secret=secret))
         sources = src.get("items", []) if src.get("ok") else []
 
         body = {
@@ -667,7 +738,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             emit("meta", {"word": word, "model": model,
                           "source_count": len(sources)})
-            with requests.post(CHAT_URL, json=body, headers=api_headers(),
+            with requests.post(CHAT_URL, json=body, headers=api_headers(secret=secret),
                                stream=True, timeout=180) as resp:
                 if resp.status_code != 200:
                     emit("error", {"message": f"直答接口返回 {resp.status_code}",

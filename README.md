@@ -44,7 +44,7 @@ Word Atlas 把站内讨论作为档案的来源层：搜索结果既喂给直答
 5. 页面底部横贯的进度条展示当日 API 额度，下方按接口分列明细
 6. 每次成功生成自动记入本地历史，下方给出词根与词的双向统计
 
-不强制登录，核心功能无需授权即可完整使用。
+不强制登录，核心功能无需授权即可完整使用。也可以点击页面上方的 🔑 填入你自己的 Access Secret，之后检索按你的额度计、不依赖部署者配置。
 
 
 ## 使用的知乎开放能力
@@ -87,6 +87,7 @@ Containerfile             容器构建，平台通用
 - **两类来源分开呈现**：站内搜索给社区经验，全网搜索给词典与机构来源，分别调用、分别展示，不混成一个黑盒。全网结果剥掉 `<em>` 高亮标签，并按 `AuthorityLevel` 标注权威等级。
 - **额度保护**：搜索与额度查询走 15 分钟 TTL 缓存 + 同 key 请求去重（双重检查加锁）；分析接口按 IP 限流 8 次/分钟，其余接口 20 次/分钟。两类搜索使用独立缓存键前缀，同一词不会被重复查询。
 - **凭证边界**：Access Secret、App Key、OAuth Token 只存在于后端进程环境与服务端会话；`/api/health` 诊断只暴露来源、是否配置、长度与 SHA-256 短前缀。前端任何响应都不含凭证。
+- **按请求 Access Secret**：用户可在页面上方 🔑 填入自己的 Access Secret，后端存到会话（仅内存，进程重启即失效），之后该用户的检索、额度查询、直答调用都用这份 secret，未填时回退环境变量。缓存与额度按 secret 指纹隔离，不同用户互不串。清除即回退环境变量。
 - **访问日志遮蔽**：默认请求行含 query，`/auth/callback?authorization_code=…` 会把授权码写进日志。日志会被打包、截图或贴进 issue，因此对 `authorization_code`、`code`、`token`、`app_key`、`state` 等键的值统一替换为 `<redacted:N>`，保留键名与长度便于排查，非敏感参数（如 `word`）原样保留。
 - **会话 Cookie 的 `Secure`**：默认跟随 `ZHIHU_OAUTH_REDIRECT_URI` 的协议——回调是 `https://` 时自动开启，本地 `http` 调试保持可用（若在本地强开，浏览器会直接丢弃 cookie，登录表现为「点了没反应」）。可用 `COOKIE_SECURE=1/0` 显式覆盖；应用自身跑 http、由反向代理终止 TLS 时必须手动置 `1`。设置与清除两处共用同一构造函数，避免属性不一致导致登出时 cookie 清不掉。`/api/health` 暴露 `cookie_secure`，部署后可直接确认。
 - **降级行为**：未配置 Access Secret 返回 503 并在页面显式提示；未配置 OAuth 时隐藏登录入口但保留核心功能；检索为空时提示档案仅基于模型知识；上游超时、流式中途报错、返回空内容都有对应提示，不静默失败。
@@ -133,6 +134,7 @@ python3 tests/test_oauth_flow.py
 - XSS：恶意输入经引号感知扫描确认仅以转义形式存在，实际标签只有 `button/span/i/div`
 - 容器构建成功并实际运行，以非 root（uid 10001）启动，端点全通
 - OAuth 代码路径 44/44 通过（对 mock 上游，`python3 tests/test_oauth_flow.py`）：回调兼容 `authorization_code` 与 `code`、token 表单字段名为 `code`、`grant_type` 固定值、`X-OAuth-Token` 与 Access Secret 同时发送、App Key 不进请求头、token 失效返回 401 且不回退本人账号
+- 用户自填 Access Secret 17/17 通过（对 mock 上游，`python3 tests/test_user_secret.py`）：显式 secret 优先、空 secret 回退环境变量、缓存按 secret 指纹隔离、清除后回退、存 secret 不返回明文只返回指纹、过长 secret 拒绝
 - 会话 Cookie：`Path` / `HttpOnly` / `SameSite` / `Secure` 四属性齐备；`COOKIE_SECURE` 判定矩阵 8 种组合（协议推断、显式覆盖、大小写、无效值回落）均符合预期，且设置与清除两处属性一致
 - 伪造 `wa_session` cookie 被拒（401），不做猜测性放行
 - OAuth 环境变量真实路径：填入三项后 `oauth_enabled` 由 false 翻为 true，`/auth/login` 正确 302 到 `openapi.zhihu.com/authorize`，`redirect_uri` 经 percent-encoding，App Key 在诊断接口只以指纹出现
