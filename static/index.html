@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Word Atlas 词汇图谱 · 知乎黑客松 2026</title>
+<link rel="icon" type="image/png" href="/static/img/favicon.png">
+<style>
+  :root{
+    --bg:#0d0f14; --panel:#161a22; --panel2:#1b2029; --line:#252b36;
+    --fg:#eceff5; --fg2:#c3cad6; --muted:#8b95a6; --accent:#0084ff;
+    --err:#ff6b6b; --warn:#f0a020; --ok:#3ddc97;
+    --d1:#a855f7; --d2:#06b6d4; --d3:#f59e0b; --d4:#22c55e;
+    --inset:#0b0e13; --btn:#20262f; --btnHover:#252c37; --hover:#232a34;
+    --ph:#5c6675; --onChip:#0b0e13; --sh:rgba(0,0,0,.3);
+    --link:#4da3ff; --headGrad:rgba(255,255,255,.035); --scheme:dark;
+    --lineHi:#2c3342; --accentHover:#0a74dd; --warnFg:#ffd694; --errFg:#ffb8b8;
+    color-scheme:dark;
+    /* 词根分段配色 */
+    --m1:#a855f7; --m2:#06b6d4; --m3:#f59e0b; --m4:#22c55e; --m5:#f472b6;
+    /* 卡片内标签色：比卡片主色淡一档 */
+    --l1:#c9a2fb; --l2:#63d3e8; --l3:#fbc46f; --l4:#79e0a1;
+  }
+  :root.light{
+    --bg:#f4f6f9; --panel:#ffffff; --panel2:#f9fafb; --line:#dde2e9;
+    --fg:#1a2230; --fg2:#465264; --muted:#6b7686; --accent:#0066cc;
+    --err:#d92d2d; --warn:#b3690a; --ok:#0a8a5a;
+    /* 深色版颜色在白底上对比不足，浅色模式用加深变体 */
+    --d1:#7c3aed; --d2:#0e7490; --d3:#b45309; --d4:#15803d;
+    --inset:#f1f4f8; --btn:#eef1f5; --btnHover:#e3e8ee; --hover:#e9edf3;
+    --ph:#98a2b3; --onChip:#ffffff; --sh:rgba(15,23,42,.09);
+    --link:#0066cc; --headGrad:rgba(15,23,42,.028); --scheme:light;
+    --lineHi:#c8d0da; --accentHover:#0056ad; --warnFg:#8a4f06; --errFg:#a81f1f;
+    color-scheme:light;
+    /* 词根分段配色（白底加深版） */
+    --m1:#7c3aed; --m2:#0e7490; --m3:#b45309; --m4:#15803d; --m5:#be185d;
+    /* 卡片内标签色：白底上需比卡片主色更深才够清晰 */
+    --l1:#6d28d9; --l2:#0b5f75; --l3:#92400e; --l4:#116932;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    transition:background-color .2s ease,color .2s ease;
+    font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans CJK SC","Microsoft YaHei",sans-serif}
+  a{color:var(--link)}
+  .wrap{max-width:1200px;margin:0 auto;padding:0 22px}
+
+  /* ---------- header ---------- */
+  header{border-bottom:1px solid var(--line);background:var(--panel)}
+  .hbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:15px 0}
+  h1{font-size:25px;margin:0;font-weight:700;letter-spacing:.2px}
+  h1 small{font-size:15px;font-weight:400;color:var(--muted);margin-left:9px;letter-spacing:.4px}
+  .tag{font-size:11.5px;color:var(--muted);border:1px solid var(--line);
+    padding:3px 9px;border-radius:99px;letter-spacing:.4px}
+  .spacer{flex:1}
+  button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);
+    background:var(--btn);color:var(--fg);padding:8px 15px;font-size:14px}
+  button:hover:not(:disabled){border-color:var(--lineHi);background:var(--btnHover)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  #themeToggle{padding:7px 10px;font-size:15px;line-height:1}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff;
+    font-weight:600;font-size:15.5px;padding:12px 30px}
+  button.primary:hover:not(:disabled){background:var(--accentHover)}
+
+  /* ---------- hero input ---------- */
+  .hero{padding:40px 0 30px;text-align:center;border-bottom:1px solid var(--line)}
+  .hero h2{font-size:30px;margin:0 0 8px;font-weight:700;letter-spacing:-.3px}
+  .hero p.sub{font-size:14.5px;color:var(--muted);margin:0 0 24px}
+  .searchrow{display:flex;gap:11px;justify-content:center;flex-wrap:wrap;
+    max-width:760px;margin:0 auto}
+  #word{flex:1 1 320px;font-size:19px;font-weight:500;letter-spacing:.2px;
+    background:var(--inset);color:var(--fg);border:1.5px solid var(--lineHi);
+    border-radius:10px;padding:13px 17px}
+  #gloss{flex:0 1 168px;font-size:14.5px;background:var(--inset);color:var(--fg2);
+    border:1.5px solid var(--lineHi);border-radius:10px;padding:13px 15px}
+  #model{font-size:14.5px;background:var(--inset);color:var(--fg2);
+    border:1.5px solid var(--lineHi);border-radius:10px;padding:13px 13px}
+  #word:focus,#gloss:focus,#model:focus{outline:none;border-color:var(--accent)}
+  #word::placeholder,#gloss::placeholder{color:var(--ph)}
+  .hint{color:var(--muted);font-size:13px;margin:16px auto 0;max-width:640px}
+
+  /* ---------- alerts ---------- */
+  #alerts{max-width:760px;margin:0 auto 16px}
+  .banner{border-radius:9px;padding:11px 14px;font-size:13.5px;
+    margin-bottom:9px;border:1px solid;text-align:left}
+  .banner.warn{background:rgba(240,160,32,.11);border-color:rgba(240,160,32,.42);color:var(--warnFg)}
+  .banner.err{background:rgba(255,107,107,.11);border-color:rgba(255,107,107,.42);color:var(--errFg)}
+
+  /* ---------- overview ---------- */
+  main{padding:26px 0 10px}
+  .overview{background:var(--panel);border:1px solid var(--line);
+    border-radius:13px;padding:20px 24px;margin-bottom:20px;display:none}
+  .overview.on{display:block}
+  .overview h3{margin:0 0 6px;font-size:32px;font-weight:700;letter-spacing:-.4px}
+  .overview .ipa{font-size:17px;color:var(--d2);font-weight:500;
+    font-family:"DejaVu Sans","Segoe UI",sans-serif}
+  .overview .locate{font-size:15px;color:var(--fg2);margin-top:10px;line-height:1.8}
+  .overview .locate strong{color:var(--fg);font-weight:600}
+
+  .stat{display:flex;align-items:center;gap:13px;margin-bottom:18px;
+    font-size:13px;color:var(--muted);min-height:20px}
+  .dots::after{content:"";animation:d 1.2s steps(4,end) infinite}
+  @keyframes d{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+
+  #reasoning{white-space:pre-wrap;color:var(--muted);font-size:12.5px;
+    line-height:1.7;border-left:2px solid var(--line);padding:2px 0 2px 12px;
+    margin-bottom:18px;max-height:140px;overflow:auto;display:none}
+
+  /* ---------- four dimension cards ---------- */
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:860px){.grid{grid-template-columns:1fr}}
+  .dim{background:var(--panel);border:1px solid var(--line);border-radius:13px;
+    border-top:3px solid var(--c);overflow:hidden;display:flex;flex-direction:column;
+    transition:box-shadow .15s,transform .15s,opacity .15s}
+  .dim.dragging{opacity:.4}
+  .dim.over{box-shadow:0 0 0 2px var(--c);transform:translateY(-2px)}
+  .dim-head{display:flex;align-items:center;gap:9px;padding:13px 16px;
+    background:linear-gradient(to bottom,var(--headGrad),transparent);
+    border-bottom:1px solid var(--line)}
+  .grip{cursor:grab;color:var(--muted);font-size:15px;line-height:1;
+    padding:3px 4px;border-radius:5px;user-select:none}
+  .grip:hover{color:var(--fg);background:var(--hover)}
+  .grip:active{cursor:grabbing}
+  .dim-num{width:23px;height:23px;flex:0 0 auto;border-radius:6px;
+    background:var(--c);color:var(--onChip);font-size:13px;font-weight:800;
+    display:flex;align-items:center;justify-content:center}
+  .dim-title{font-size:17.5px;font-weight:700;color:var(--c);letter-spacing:.3px}
+  .dim-head .spacer{flex:1}
+  .mv{background:transparent;border:1px solid transparent;color:var(--muted);
+    padding:2px 7px;font-size:13px;border-radius:5px}
+  .mv:hover:not(:disabled){color:var(--fg);border-color:var(--line);background:var(--hover)}
+  .dim-body{padding:15px 18px 18px;font-size:14px;line-height:1.8;
+    color:var(--fg2);flex:1}
+  .dim-body:empty::before{content:"等待生成…";color:var(--ph);font-size:13px}
+
+  /* markdown inside cards */
+  .dim-body ul{margin:.4em 0;padding-left:1.15em}
+  .dim-body ul ul{margin:.2em 0}
+  .dim-body ol{margin:.4em 0;padding-left:1.45em}
+  .dim-body li{margin:.34em 0}
+  .dim-body li::marker{color:var(--c)}
+  .dim-body p{margin:.5em 0}
+  .dim-body strong{color:var(--fg);font-weight:600}
+  .dim-body em{color:var(--fg);font-style:italic}
+  .dim-body code{background:var(--inset);border:1px solid var(--line);border-radius:4px;
+    padding:1px 5px;font-size:12.5px;font-family:"DejaVu Sans Mono",Consolas,monospace}
+  .dim-body blockquote{margin:.5em 0;padding:.1em 0 .1em .8em;
+    border-left:2px solid var(--c);color:var(--muted)}
+  .dim-body h4{font-size:13.5px;margin:.8em 0 .3em;color:var(--fg)}
+
+  /* ---------- side sections ---------- */
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px}
+  @media(max-width:860px){.row2{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:17px 19px}
+  .card h3{font-size:14px;text-transform:uppercase;letter-spacing:1px;
+    color:var(--muted);margin:0 0 13px;font-weight:700}
+  .note{font-size:13.5px;color:var(--muted)}
+  .src{border-top:1px solid var(--line);padding:11px 0}
+  .src:first-of-type{border-top:0;padding-top:0}
+  .src .t{font-size:14px;font-weight:600;display:block;margin-bottom:3px;
+    color:var(--link);text-decoration:none;line-height:1.5}
+  .src .t:hover{text-decoration:underline}
+  .src .x{color:var(--muted);font-size:12.5px;line-height:1.6;display:block}
+  .qtag{font-size:11.5px;color:var(--muted);margin-bottom:11px;
+    border:1px solid var(--line);border-radius:99px;padding:2px 9px;display:inline-block}
+
+  /* ---------- quota footer ---------- */
+  footer{border-top:1px solid var(--line);background:var(--panel);margin-top:34px;
+    padding:24px 0 30px}
+  .qhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:11px}
+  .qhead h3{font-size:14px;text-transform:uppercase;letter-spacing:1px;
+    color:var(--muted);margin:0;font-weight:700}
+  .qpct{font-size:21px;font-weight:700;color:var(--fg)}
+  .qsum{font-size:13px;color:var(--muted)}
+  .barwrap{width:100%;height:10px;background:var(--inset);border:1px solid var(--line);
+    border-radius:99px;overflow:hidden}
+  .bar{height:100%;width:0;border-radius:99px;
+    background:linear-gradient(90deg,var(--d4),var(--d3));transition:width .5s ease}
+  .bar.hot{background:linear-gradient(90deg,var(--d3),var(--err))}
+  .qlist{margin-top:16px;display:flex;flex-direction:column;gap:1px}
+  .qrow{display:grid;grid-template-columns:150px 1fr 132px;gap:14px;align-items:center;
+    padding:9px 0;border-top:1px solid var(--line);font-size:13.5px}
+  .qrow:first-child{border-top:0}
+  @media(max-width:640px){.qrow{grid-template-columns:1fr;gap:5px}}
+  .qname{color:var(--fg);font-weight:600}
+  .qmini{height:6px;background:var(--inset);border:1px solid var(--line);
+    border-radius:99px;overflow:hidden}
+  .qmini i{display:block;height:100%;width:0;background:var(--accent);
+    border-radius:99px;transition:width .5s ease}
+  .qnum{color:var(--muted);font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums}
+  @media(max-width:640px){.qnum{text-align:left}}
+  .qnum b{color:var(--fg);font-weight:600;font-size:13.5px}
+  .foot-note{margin-top:20px;padding-top:16px;border-top:1px solid var(--line);
+    color:var(--muted);font-size:12.5px;line-height:1.7}
+
+  /* 标题词的词根分段着色 */
+  .mo{color:var(--mo);font-weight:700}
+  .mo+.mo{margin-left:0}
+  /* 拆解：第一行彩色词素，第二行文字说明 */
+  .chips{display:block;margin:.45em 0 .3em;line-height:2.1}
+  .chip{display:inline-block;color:var(--mo);border:1px solid var(--mo);
+    border-radius:6px;padding:1px 9px;font-size:13.5px;font-weight:700;
+    font-family:"DejaVu Sans Mono",Consolas,monospace;background:var(--inset)}
+  .plus{color:var(--muted);margin:0 6px;font-size:13px}
+  .subline{display:block;color:var(--fg2);font-size:13.5px;line-height:1.75}
+  /* 卡片内标签：卡片主色的淡一档变体 */
+  .lb{color:var(--lb,var(--accent));font-weight:700}
+  .sep{color:var(--lb,var(--accent));opacity:.65;margin-right:2px}
+  /* 多项列举：每项独立成行 */
+  .eitem{display:block;padding-left:.85em;position:relative}
+  .eitem::before{content:"·";position:absolute;left:0;color:var(--lb,var(--accent));font-weight:700}
+  .eitem:first-child{margin-top:.15em}
+  /* 语义路径：竖向流水线 */
+  .flow{display:block;margin:.5em 0 .15em}
+  .fstep{display:block;position:relative;padding:0 0 .7em 1.85em;line-height:1.72}
+  .fstep:last-child{padding-bottom:0}
+  .fnum{position:absolute;left:0;top:.2em;width:1.25em;height:1.25em;border-radius:50%;
+    background:var(--lb,var(--accent));color:var(--onChip);font-size:11px;font-weight:800;
+    display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+  /* 连接线：最后一级不画 */
+  .fstep::before{content:"";position:absolute;left:.575em;top:1.55em;bottom:.05em;
+    width:1.5px;background:var(--lb,var(--accent));opacity:.38}
+  .fstep:last-child::before{display:none}
+
+  /* 历史与词根统计 */
+  .hsec{margin-top:20px}
+  .hhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:15px}
+  .hhead h3{font-size:14px;text-transform:uppercase;letter-spacing:1px;
+    color:var(--muted);margin:0;font-weight:700}
+  .hgrid{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  @media(max-width:860px){.hgrid{grid-template-columns:1fr}}
+  .subhead{font-size:13px;color:var(--fg2);font-weight:600;margin-bottom:10px}
+  .barrow{display:grid;grid-template-columns:96px 1fr 30px;gap:10px;align-items:center;
+    padding:5px 6px;border-radius:6px;cursor:pointer;border:1px solid transparent;
+    background:none;width:100%;font:inherit;text-align:left}
+  .barrow:hover{background:var(--hover)}
+  .barrow.sel{background:var(--hover);border-color:var(--mo)}
+  .barmo{font-family:"DejaVu Sans Mono",Consolas,monospace;font-weight:700;
+    color:var(--mo);font-size:13px;text-align:right;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bartrack{height:9px;background:var(--inset);border:1px solid var(--line);
+    border-radius:99px;overflow:hidden}
+  .barfill{display:block;height:100%;background:var(--mo);border-radius:99px;
+    transition:width .4s ease}
+  .barn{font-size:12.5px;color:var(--muted);text-align:right;
+    font-variant-numeric:tabular-nums}
+  .wrow{border-top:1px solid var(--line);padding:9px 0}
+  .wrow:first-child{border-top:0;padding-top:0}
+  .wlink{font-size:15px;font-weight:700;color:var(--link);cursor:pointer;
+    background:none;border:0;padding:0;font-family:inherit}
+  .wlink:hover{text-decoration:underline}
+  .wmeta{color:var(--muted);font-size:12px;margin-left:9px}
+  .wms{margin-top:4px;line-height:2}
+  .wms .chip{font-size:12px;padding:0 7px}
+  .empty{color:var(--muted);font-size:13.5px}
+  .hostchip{font-size:11.5px;color:var(--muted);border:1px solid var(--line);
+    border-radius:5px;padding:0 6px;margin-right:6px}
+  .auth{font-size:11.5px;font-weight:700;border-radius:5px;padding:0 6px;
+    border:1px solid currentColor}
+  .auth.a4,.auth.a3{color:var(--ok)}
+  .auth.a2{color:var(--warn)}
+  .auth.a1{color:var(--muted)}
+  /* ---------- 刘看山素材 ---------- */
+  .ms-head{flex:0 0 auto;display:block}
+  .ms-hero{display:block;margin:0 auto 6px;max-width:100%;height:auto;
+    transition:opacity .2s ease}
+  /* 生成中：宽头图切换为方形加载图，contain 保持比例 */
+  .ms-hero.busy{width:140px;height:140px;object-fit:contain}
+  .empty.has-ms{display:flex;flex-direction:column;align-items:center;
+    text-align:center;gap:6px;padding:16px 0 8px;line-height:1.6}
+  .ms-idle{opacity:.92}
+  /* 深色背景下白色吉祥物边缘偏亮，压一点亮度；彩色头图不压 */
+  :root:not(.light) .ms-head,
+  :root:not(.light) .ms-hero.busy,
+  :root:not(.light) .ms-idle{filter:brightness(.93)}
+  /* 尊重系统减少动态效果偏好：JS 换静态首帧，这里同时禁掉过渡 */
+  @media(prefers-reduced-motion:reduce){
+    .ms-hero{transition:none}
+  }
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+<script>
+/* 在渲染前应用主题，避免刷新时闪一下深色 */
+(function(){
+  try{
+    var saved = localStorage.getItem('wa-theme');
+    var light = saved ? saved === 'light'
+      : window.matchMedia('(prefers-color-scheme: light)').matches;
+    if(light) document.documentElement.classList.add('light');
+  }catch(e){}
+})();
+</script>
+</head>
+<body>
+
+<header>
+  <div class="wrap hbar">
+    <img id="msHead" class="ms-head" src="/static/img/standby.webp"
+         alt="" aria-hidden="true" width="34" height="34" decoding="async">
+    <h1>Word Atlas<small>词汇图谱</small></h1>
+    <span class="tag">知乎黑客松 2026</span>
+    <span class="tag">直答驱动</span>
+    <div class="spacer"></div>
+    <button id="themeToggle" aria-label="切换深色/浅色模式" title="切换主题">🌓</button>
+    <span id="who" class="note"></span>
+    <button id="login" hidden>用知乎账号登录</button>
+    <button id="logout" hidden>退出</button>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <img id="msHero" class="ms-hero" src="/static/img/headpng.webp"
+         alt="Word Atlas 词汇图谱" width="720" height="240" decoding="async">
+    <h2>查清一个词的户口</h2>
+    <p class="sub">溯源构词 · 发音重音 · 词频语境 · 语法产出，四维结构化档案</p>
+    <div id="alerts" role="status" aria-live="polite"></div>
+    <form class="searchrow" id="form">
+      <label class="sr" for="word">英文单词</label>
+      <input id="word" type="text" placeholder="输入英文单词，例如 conglomerate"
+             autocomplete="off" spellcheck="false" required>
+      <label class="sr" for="gloss">中文释义（可选，用于站内检索）</label>
+      <input id="gloss" type="text" placeholder="中文释义（可选）" autocomplete="off">
+      <label class="sr" for="model">模型档位</label>
+      <select id="model">
+        <option value="deep">深度思考</option>
+        <option value="fast">快速回答</option>
+      </select>
+      <button class="primary" id="go" type="submit">生成档案</button>
+    </form>
+    <p class="hint">词源、词频与 CEFR 查不到时会标注「待核查」，不编造数据。
+      填入中文释义可让站内检索更贴近这个词本身。</p>
+  </div>
+</section>
+
+<main class="wrap">
+  <div class="stat"><span id="status"></span></div>
+  <div id="reasoning" aria-label="推理过程"></div>
+
+  <article class="overview" id="overview">
+    <h3 id="ovWord"></h3>
+    <div id="ovBody" class="locate"></div>
+  </article>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="row2">
+    <section class="card">
+      <h3>知乎社区来源</h3>
+      <div id="srcQuery"></div>
+      <div id="sources" class="note">生成档案后显示站内相关讨论。</div>
+    </section>
+    <section class="card">
+      <h3>全网数据来源</h3>
+      <div id="glbQuery"></div>
+      <div id="global" class="note">生成档案后显示词典、外刊等站外来源。</div>
+    </section>
+  </div>
+
+  <section class="card hsec">
+    <div class="hhead">
+      <h3>查询历史与词根统计</h3>
+      <span id="hCount" class="note"></span>
+      <span class="spacer"></span>
+      <button id="hClear">清空历史</button>
+    </div>
+    <div class="hgrid">
+      <div>
+        <div class="subhead">词根 → 词（出现次数）</div>
+        <div id="moChart" class="empty has-ms">
+          <img class="ms-idle" src="/static/img/sleep.webp" alt=""
+               aria-hidden="true" width="104" height="104"
+               loading="lazy" decoding="async">
+          <span>还没有历史记录，查过的词会在这里按词根聚起来。</span>
+        </div>
+      </div>
+      <div>
+        <div class="subhead">词 → 词根 <span id="moFilterTag"></span></div>
+        <div id="wordList" class="empty">生成档案后自动记入，最多保留 100 条。</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="qhead">
+      <h3>今日开放 API 额度</h3>
+      <span class="qpct" id="qPct">—</span>
+      <span class="qsum" id="qSum">读取中<span class="dots"></span></span>
+    </div>
+    <div class="barwrap" role="progressbar" id="qBarWrap"
+         aria-label="今日 API 额度总用量" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="bar" id="qBar"></div>
+    </div>
+    <div class="qlist" id="qList"></div>
+    <p class="foot-note">
+      Access Secret、App Key 与 OAuth Token 仅在后端处理，不下发前端。
+      搜索与额度查询有 15 分钟缓存与请求去重。四张维度卡片可拖动重排。
+    </p>
+  </div>
+</footer>
+
+<script>
+const $ = s => document.querySelector(s);
+
+/* ================= 刘看山素材 ================= */
+/* 动图 webp 与静态首帧切换：尊重系统「减少动态效果」偏好，
+   此时换静态首帧，避免动图持续播放（无障碍 + 省电）。 */
+const REDUCE_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)');
+function msSrc(name){
+  return '/static/img/' + name + (REDUCE_MOTION.matches ? '-still.png' : '.webp');
+}
+/* 生成中把 hero 头图换成「打电脑」加载图，结束或失败恢复头图 */
+function msBusy(busy){
+  const el = $('#msHero');
+  if(!el) return;
+  const src = busy ? msSrc('computer') : '/static/img/headpng.webp';
+  if(el.getAttribute('src') !== src) el.setAttribute('src', src);
+  el.classList.toggle('busy', busy);
+}
+
+/* ================= 维度定义 ================= */
+const DIMS = [
+  {k:'一', name:'溯源与构词', color:'var(--d1)'},
+  {k:'二', name:'发音与听感', color:'var(--d2)'},
+  {k:'三', name:'频率与语境', color:'var(--d3)'},
+  {k:'四', name:'语法行为与产出', color:'var(--d4)'},
+];
+const NUM = {'一':'1','二':'2','三':'3','四':'4'};
+const MOVAR = ['--m1','--m2','--m3','--m4','--m5'];
+const LBVAR = {'一':'--l1','二':'--l2','三':'--l3','四':'--l4'};
+/* 这些标签的内容是多项列举，逐项分行 */
+const ENUM_LB = ['同根词族','词族','同源词','高频搭配','搭配','易混辨析','例句','易错点'];
+/* 这些标签是演化路径，用流水线呈现 */
+const FLOW_LB = ['语义路径','语义映射','引申路径','演变路径'];
+
+/* ================= 极简 Markdown 渲染 ================= */
+/* 先转义再解析，模型输出中的 HTML 不会被执行 */
+function esc(s){
+  return s.replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function inline(s){
+  s = esc(s);
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/(^|[^*\w])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+                '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  return s;
+}
+/* 列表项/段落：「标签：内容」结构化渲染 */
+function liHtml(txt, opts){
+  opts = opts || {};
+  const m = txt.match(/^\**\s*([^：:*（(]{2,12})\s*\**\s*[：:]\s*([\s\S]*)$/);
+  if(!m) return inline(txt);
+  const label = m[1].trim(), rest = m[2].trim();
+  const lb = `<span class="lb">${esc(label)}</span><span class="sep">：</span>`;
+  /* 拆解：第一行彩色词素，第二行原文说明 */
+  if(label === '拆解' && opts.morphs && opts.morphs.length){
+    const chips = opts.morphs.map((mo, i) =>
+      `<span class="chip" style="--mo:var(${MOVAR[i % MOVAR.length]})">${esc(mo)}</span>`)
+      .join('<span class="plus">+</span>');
+    return `${lb}<span class="chips">${chips}</span><span class="subline">${inline(rest)}</span>`;
+  }
+  /* 语义路径：按箭头切成流水线步骤 */
+  if(FLOW_LB.includes(label)){
+    /* 先统一箭头写法，再顶层切分——括号内的箭头不切 */
+    const steps = splitTop(rest.replace(/-+>|=+>|⇒|➔|➜/g, '→'), '→');
+    if(steps.length > 1)
+      return lb + '<span class="flow">' + steps.map((x, i) =>
+        `<span class="fstep"><span class="fnum">${i + 1}</span>${inline(x)}</span>`
+      ).join('') + '</span>';
+  }
+  /* 多项列举逐项分行 */
+  if(ENUM_LB.includes(label)){
+    /* 只把首句当作列举区：句号之后往往是说明性散文，
+       其中的顿号不是并列分隔（如「global、globe 与本词根远亲相关」），切了会断句。 */
+    const sents = splitTop(rest, '。');
+    const zone = sents[0] || '';
+    const tail = sents.slice(1).join('。').trim();
+    /* 级联切分：分号切完继续切顿号，否则仍用顿号并列的词会挤在一项里。 */
+    const items = splitTop(zone, '；;').reduce(
+      (acc, x) => acc.concat(splitTop(x, '、')), []);
+    if(items.length > 1){
+      let html = lb + items.map(x => `<span class="eitem">${inline(x)}</span>`).join('');
+      if(tail) html += `<span class="subline">${inline(tail)}。</span>`;
+      return html;
+    }
+  }
+  return lb + inline(rest);
+}
+
+function renderMd(md, opts){
+  opts = opts || {};
+  const lines = md.replace(/\r/g,'').split('\n');
+  let out = '', stack = [], para = [];
+  const closeAll = () => { while(stack.length) out += stack.pop(); };
+  const flushP = () => { if(para.length){ out += '<p>'+liHtml(para.join(' '), opts)+'</p>'; para = []; } };
+
+  for(const raw of lines){
+    const line = raw.replace(/\s+$/,'');
+    if(!line.trim()){ flushP(); closeAll(); continue; }
+
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if(h){ flushP(); closeAll(); out += `<h4>${inline(h[2])}</h4>`; continue; }
+
+    if(/^\s*([-*_]\s*){3,}$/.test(line)){ flushP(); closeAll(); continue; }
+
+    const q = line.match(/^>\s?(.*)$/);
+    if(q){ flushP(); closeAll(); out += `<blockquote>${inline(q[1])}</blockquote>`; continue; }
+
+    const li = line.match(/^(\s*)([-*+]|\d+[.)])\s+(.*)$/);
+    if(li){
+      flushP();
+      const depth = Math.min(Math.floor(li[1].replace(/\t/g,'  ').length / 2), 2);
+      const ordered = /\d/.test(li[2]);
+      const tag = ordered ? 'ol' : 'ul';
+      while(stack.length > depth + 1) out += stack.pop();
+      if(stack.length < depth + 1){
+        while(stack.length < depth + 1){ out += `<${tag}>`; stack.push(`</${tag}>`); }
+      }
+      out += `<li>${liHtml(li[3], opts)}</li>`;
+      continue;
+    }
+    closeAll();
+    para.push(line.trim());
+  }
+  flushP(); closeAll();
+  return out;
+}
+
+/* ================= 词根解析与着色 ================= */
+/* 顶层分隔切分：括号、引号内部不切 */
+function splitTop(t, seps){
+  const OP = '（(「『【《“‘[', CL = '）)」』】》”’]';
+  const out = []; let cur = '', d = 0;
+  for(const ch of t){
+    if(OP.includes(ch)) d++;
+    else if(CL.includes(ch)) d = Math.max(0, d - 1);
+    if(d === 0 && seps.includes(ch)){ out.push(cur); cur = ''; continue; }
+    cur += ch;
+  }
+  out.push(cur);
+  return out.map(x => x.trim()).filter(Boolean);
+}
+/* 从维度一的「拆解」行提取词素，如 con- / glomer- / -ate */
+function extractMorphs(sec){
+  if(!sec) return [];
+  const m = sec.match(/^\s*[-*+]?\s*\**\s*拆解\s*\**\s*[：:]\s*(.*)$/m);
+  if(!m) return [];
+  if(/不适用|不可拆|无法拆/.test(m[1])) return [];
+  const out = [];
+  splitTop(m[1], '+＋').forEach(part => {
+    const t = part.match(/(-?[A-Za-z][A-Za-z'’\-]*-?)/);
+    if(t) out.push(t[1]);
+  });
+  return out.slice(0, 5);
+}
+/* 按词素给标题词分段着色 */
+function colorWord(word, morphs){
+  if(!morphs.length) return esc(word);
+  let rest = word, out = '', i = 0;
+  for(const mo of morphs){
+    const core = mo.replace(/-/g, '');
+    if(!core) continue;
+    const idx = rest.toLowerCase().indexOf(core.toLowerCase());
+    if(idx < 0) continue;
+    out += esc(rest.slice(0, idx))
+         + `<span class="mo" style="--mo:var(${MOVAR[i % MOVAR.length]})">`
+         + esc(rest.slice(idx, idx + core.length)) + '</span>';
+    rest = rest.slice(idx + core.length);
+    i++;
+  }
+  return out + esc(rest);
+}
+
+/* ================= 拆分四维 ================= */
+function splitDoc(md){
+  const res = {head:'', word:'', secs:{}};
+  const re = /^##\s*([一二三四])[、.．:：]?\s*(.*)$/gm;
+  const marks = [];
+  let m;
+  while((m = re.exec(md)) !== null) marks.push({k:m[1], start:m.index, end:re.lastIndex});
+  const headEnd = marks.length ? marks[0].start : md.length;
+  let head = md.slice(0, headEnd);
+  marks.forEach((x,i) => {
+    res.secs[x.k] = md.slice(x.end, i+1 < marks.length ? marks[i+1].start : md.length).trim();
+  });
+  const t = head.match(/^#\s+(.*)$/m);
+  if(t){ res.word = t[1].trim(); head = head.replace(/^#\s+.*$/m, ''); }
+  res.head = head.trim();
+  return res;
+}
+
+/* ================= 构建卡片（只建一次，保住拖动顺序） ================= */
+const grid = $('#grid');
+DIMS.forEach(d => {
+  const el = document.createElement('section');
+  el.className = 'dim';
+  el.dataset.dim = d.k;
+  el.style.setProperty('--c', d.color);
+  el.innerHTML = `
+    <div class="dim-head">
+      <span class="grip" draggable="true" role="button" tabindex="-1"
+            aria-label="拖动重排：${d.name}" title="拖动重排">⠿</span>
+      <span class="dim-num">${NUM[d.k]}</span>
+      <span class="dim-title">${d.name}</span>
+      <span class="spacer"></span>
+      <button class="mv" data-mv="-1" aria-label="将「${d.name}」前移" title="前移">←</button>
+      <button class="mv" data-mv="1" aria-label="将「${d.name}」后移" title="后移">→</button>
+    </div>
+    <div class="dim-body" data-body="${d.k}" style="--lb:var(${LBVAR[d.k]})"></div>`;
+  grid.appendChild(el);
+});
+
+/* 拖动重排：交换两张卡片位置 */
+let dragSrc = null;
+grid.addEventListener('dragstart', e => {
+  const g = e.target.closest('.grip'); if(!g) return;
+  dragSrc = g.closest('.dim');
+  dragSrc.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', dragSrc.dataset.dim);
+});
+grid.addEventListener('dragover', e => {
+  const c = e.target.closest('.dim');
+  if(!c || !dragSrc || c === dragSrc) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  c.classList.add('over');
+});
+grid.addEventListener('dragleave', e => {
+  const c = e.target.closest('.dim'); if(c) c.classList.remove('over');
+});
+grid.addEventListener('drop', e => {
+  const c = e.target.closest('.dim');
+  if(!c || !dragSrc || c === dragSrc) return;
+  e.preventDefault();
+  c.classList.remove('over');
+  const kids = [...grid.children];
+  const i = kids.indexOf(dragSrc), j = kids.indexOf(c);
+  const anchor = document.createElement('div');
+  grid.insertBefore(anchor, dragSrc);
+  grid.insertBefore(dragSrc, c);
+  grid.insertBefore(c, anchor);
+  grid.removeChild(anchor);
+});
+grid.addEventListener('dragend', () => {
+  if(dragSrc) dragSrc.classList.remove('dragging');
+  [...grid.children].forEach(c => c.classList.remove('over'));
+  dragSrc = null;
+});
+/* 键盘重排 */
+grid.addEventListener('click', e => {
+  const b = e.target.closest('.mv'); if(!b) return;
+  const card = b.closest('.dim'), dir = +b.dataset.mv;
+  const kids = [...grid.children], i = kids.indexOf(card), j = i + dir;
+  if(j < 0 || j >= kids.length) return;
+  if(dir === 1) grid.insertBefore(kids[j], card);
+  else grid.insertBefore(card, kids[j]);
+  b.focus();
+});
+
+/* ================= 渲染档案 ================= */
+let rawDoc = '';
+function paint(){
+  const p = splitDoc(rawDoc);
+  /* 词素来自维度一的「拆解」行，供标题着色与拆解卡片复用 */
+  const morphs = extractMorphs(p.secs['一']);
+  const ov = $('#overview');
+  if(p.word || p.head){
+    ov.classList.add('on');
+    const wm = p.word.match(/^(.*?)(\/.*\/)\s*(.*)$/);
+    $('#ovWord').innerHTML = wm
+      ? `${colorWord(wm[1].trim(), morphs)} <span class="ipa">${esc(wm[2])}</span> ${esc(wm[3])}`
+      : colorWord(p.word, morphs);
+    $('#ovBody').innerHTML = renderMd(p.head);
+  }
+  DIMS.forEach(d => {
+    const body = grid.querySelector(`[data-body="${d.k}"]`);
+    const sec = p.secs[d.k];
+    if(sec !== undefined) body.innerHTML = renderMd(sec, {morphs});
+  });
+}
+function resetDoc(){
+  rawDoc = '';
+  $('#overview').classList.remove('on');
+  $('#ovWord').textContent = ''; $('#ovBody').innerHTML = '';
+  DIMS.forEach(d => grid.querySelector(`[data-body="${d.k}"]`).innerHTML = '');
+}
+
+/* ================= 提示 ================= */
+function alertBox(kind,msg){
+  $('#alerts').innerHTML = `<div class="banner ${kind}">${msg}</div>`;
+}
+const clearAlert = () => $('#alerts').innerHTML = '';
+
+/* ================= 配置 / 登录 ================= */
+async function loadConfig(){
+  try{
+    const c = await (await fetch('/api/config')).json();
+    $('#login').hidden = !c.oauth_enabled || c.logged_in;
+    $('#logout').hidden = !c.logged_in;
+    $('#who').textContent = c.logged_in ? '已用知乎账号登录' : '';
+    if(!c.access_secret_configured)
+      alertBox('err','后端未配置 Access Secret，直答与搜索不可用。设置 ZHIHU_ACCESS_SECRET 后重启。');
+    else if(!c.oauth_enabled)
+      alertBox('warn','OAuth 未配置，登录入口不可用；词汇分析不受影响。');
+  }catch{ alertBox('err','无法读取后端配置，服务可能未启动。'); }
+}
+
+/* ================= 额度 ================= */
+async function loadQuota(){
+  try{
+    const r = await fetch('/api/quota');
+    if(!r.ok){
+      $('#qSum').textContent = r.status === 503
+        ? '未配置 Access Secret，无法查询额度。' : '额度接口暂时不可用。';
+      return;
+    }
+    const {data, cached} = await r.json();
+    const list = Array.isArray(data) ? data : (data ? [data] : []);
+    if(!list.length){ $('#qSum').textContent = '未返回额度数据。'; return; }
+
+    let used = 0, total = 0;
+    list.forEach(q => { used += (q.TotalUsed||0); total += (q.TotalQuota||0); });
+    const pct = total ? Math.min(100, used / total * 100) : 0;
+    $('#qPct').textContent = pct.toFixed(1) + '%';
+    $('#qSum').innerHTML = `已用 <b style="color:var(--fg)">${used}</b> / 共 ${total}
+      · 剩余 ${total - used}${cached ? ' · 缓存结果' : ''}`;
+    const bar = $('#qBar');
+    bar.style.width = pct + '%';
+    bar.classList.toggle('hot', pct >= 70);
+    $('#qBarWrap').setAttribute('aria-valuenow', pct.toFixed(1));
+
+    $('#qList').innerHTML = list.map(q => {
+      const t = q.TotalQuota || 0, u = q.TotalUsed || 0;
+      const p = t ? Math.min(100, u / t * 100) : 0;
+      return `<div class="qrow">
+        <span class="qname">${esc(q.APIName || q.APIID || 'API')}</span>
+        <span class="qmini"><i style="width:${p}%"></i></span>
+        <span class="qnum">剩余 <b>${q.RemainingQuota ?? '—'}</b> / ${t || '—'}</span>
+      </div>`;
+    }).join('');
+  }catch{ $('#qSum').textContent = '额度查询失败。'; }
+}
+
+/* ================= 站内来源 / 全网来源 ================= */
+async function loadSources(word, gloss){
+  const el = $('#sources');
+  el.innerHTML = '检索中<span class="dots"></span>';
+  $('#srcQuery').innerHTML = '';
+  try{
+    const u = '/api/sources?word=' + encodeURIComponent(word)
+            + (gloss ? '&gloss=' + encodeURIComponent(gloss) : '');
+    const r = await fetch(u);
+    if(!r.ok){ el.textContent = '来源检索不可用（' + r.status + '）。'; return; }
+    const {items, empty_reason, query} = await r.json();
+    if(query) $('#srcQuery').innerHTML = `<span class="qtag">检索词：${esc(query)}</span>`;
+    el.innerHTML = items.length
+      ? items.map(i => `<div class="src">
+          <a class="t" href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.title || '(无标题)')}</a>
+          <span class="x">${i.author ? esc(i.author) + '：' : ''}${esc(i.excerpt || '')}</span>
+        </div>`).join('')
+      : (esc(empty_reason) || '站内没有检索到相关讨论。');
+  }catch{ el.textContent = '来源检索失败。'; }
+}
+
+async function loadGlobal(word, gloss){
+  const el = $('#global');
+  el.innerHTML = '检索中<span class="dots"></span>';
+  $('#glbQuery').innerHTML = '';
+  try{
+    const u = '/api/global?word=' + encodeURIComponent(word)
+            + (gloss ? '&gloss=' + encodeURIComponent(gloss) : '');
+    const r = await fetch(u);
+    if(!r.ok){
+      el.textContent = r.status === 503
+        ? '未配置 Access Secret，无法检索全网来源。'
+        : '全网检索不可用（' + r.status + '）。';
+      return;
+    }
+    const {items, query} = await r.json();
+    if(query) $('#glbQuery').innerHTML = `<span class="qtag">检索词：${esc(query)}</span>`;
+    el.innerHTML = items.length
+      ? items.map(i => {
+          const lvl = i.authority_level || '';
+          const auth = i.authority
+            ? `<span class="auth a${esc(lvl)}">${esc(i.authority)}</span>` : '';
+          return `<div class="src">
+            <a class="t" href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.title || '(无标题)')}</a>
+            <span class="x">${i.host ? `<span class="hostchip">${esc(i.host)}</span>` : ''}${auth}
+              ${esc(i.excerpt || '')}</span></div>`;
+        }).join('')
+      : '全网没有检索到相关来源。';
+  }catch{ el.textContent = '全网检索失败。'; }
+}
+
+/* ================= 查询历史与词根统计 ================= */
+const HKEY = 'wa-history', HMAX = 100;
+let moFilter = null;
+
+function hLoad(){
+  try{
+    const a = JSON.parse(localStorage.getItem(HKEY) || '[]');
+    return Array.isArray(a) ? a : [];
+  }catch{ return []; }
+}
+function hSave(a){
+  try{ localStorage.setItem(HKEY, JSON.stringify(a.slice(0, HMAX))); }catch{}
+}
+/* 同一个词只保留最新一条，避免重复查询挤占容量 */
+function hAdd(word, morphs, ipa){
+  if(!word) return;
+  const a = hLoad().filter(x => x.w.toLowerCase() !== word.toLowerCase());
+  a.unshift({w:word, m:morphs||[], ipa:ipa||'', t:Date.now()});
+  hSave(a);
+  renderHistory();
+}
+
+function renderHistory(){
+  const a = hLoad();
+  $('#hCount').textContent = a.length ? `${a.length} / ${HMAX} 条` : '';
+  $('#hClear').disabled = !a.length;
+
+  /* 词根 -> 词，按出现次数排序 */
+  const map = new Map();
+  a.forEach(it => (it.m || []).forEach(mo => {
+    if(!map.has(mo)) map.set(mo, []);
+    const l = map.get(mo);
+    if(!l.includes(it.w)) l.push(it.w);
+  }));
+  const rows = [...map.entries()].sort((x,y) =>
+    y[1].length - x[1].length || x[0].localeCompare(y[0]));
+
+  const chart = $('#moChart');
+  if(!rows.length){
+    /* 空状态由 JS 重建，否则页面加载时会冲掉 HTML 里预置的素材 */
+    chart.className = 'empty has-ms';
+    const tip = a.length
+      ? '历史中的词都不可拆，暂无词根统计。'
+      : '还没有历史记录，查过的词会在这里按词根聚起来。';
+    chart.innerHTML =
+      `<img class="ms-idle" src="${msSrc('sleep')}" alt="" aria-hidden="true"
+            width="104" height="104" loading="lazy" decoding="async">
+       <span>${esc(tip)}</span>`;
+  }else{
+    const max = rows[0][1].length;
+    chart.className = '';
+    chart.innerHTML = rows.map(([mo, ws], i) => {
+      const sel = moFilter === mo ? ' sel' : '';
+      const pct = Math.max(6, ws[1] ? ws.length / max * 100 : 100 / max);
+      return `<button class="barrow${sel}" data-mo="${esc(mo)}"
+        style="--mo:var(${MOVAR[i % MOVAR.length]})"
+        aria-pressed="${moFilter === mo}"
+        title="${esc(ws.join('、'))}">
+        <span class="barmo">${esc(mo)}</span>
+        <span class="bartrack"><i class="barfill" style="width:${pct}%"></i></span>
+        <span class="barn">${ws.length}</span></button>`;
+    }).join('');
+  }
+
+  /* 词 -> 词根 */
+  const shown = moFilter ? a.filter(it => (it.m||[]).includes(moFilter)) : a;
+  $('#moFilterTag').innerHTML = moFilter
+    ? `<span class="qtag">筛选：${esc(moFilter)} · 点击词根取消</span>` : '';
+  const wl = $('#wordList');
+  if(!shown.length){
+    wl.className = 'empty';
+    wl.textContent = a.length ? '该词根下没有记录。'
+      : '生成档案后自动记入，最多保留 100 条。';
+  }else{
+    wl.className = '';
+    wl.innerHTML = shown.map(it => {
+      const ms = (it.m||[]).length
+        ? `<span class="wms">` + it.m.map((mo,i) =>
+            `<span class="chip" style="--mo:var(${MOVAR[i % MOVAR.length]})">${esc(mo)}</span>`
+          ).join('<span class="plus">+</span>') + `</span>`
+        : `<span class="wmeta">不可拆</span>`;
+      const d = new Date(it.t);
+      const stamp = `${d.getMonth()+1}/${d.getDate()}`;
+      return `<div class="wrow">
+        <button class="wlink" data-w="${esc(it.w)}">${esc(it.w)}</button>
+        ${it.ipa ? `<span class="wmeta">${esc(it.ipa)}</span>` : ''}
+        <span class="wmeta">${stamp}</span>
+        ${ms}</div>`;
+    }).join('');
+  }
+}
+
+/* 点词根筛选，再点取消 */
+$('#moChart').addEventListener('click', e => {
+  const b = e.target.closest('.barrow'); if(!b) return;
+  moFilter = moFilter === b.dataset.mo ? null : b.dataset.mo;
+  renderHistory();
+});
+/* 点历史里的词，回填输入框并重新生成 */
+$('#wordList').addEventListener('click', e => {
+  const b = e.target.closest('.wlink'); if(!b) return;
+  $('#word').value = b.dataset.w;
+  $('#gloss').value = '';
+  $('#form').dispatchEvent(new Event('submit', {cancelable:true}));
+  window.scrollTo({top:0, behavior:'smooth'});
+});
+$('#hClear').addEventListener('click', () => {
+  if(!confirm('清空全部查询历史？')) return;
+  try{ localStorage.removeItem(HKEY); }catch{}
+  moFilter = null;
+  renderHistory();
+});
+
+/* ================= 生成 ================= */
+let streaming = false;
+$('#form').addEventListener('submit', async e => {
+  e.preventDefault();
+  if(streaming) return;
+  const word = $('#word').value.trim();
+  const gloss = $('#gloss').value.trim();
+  if(!word) return;
+
+  clearAlert();
+  streaming = true;
+  msBusy(true);
+  $('#go').disabled = true;
+  resetDoc();
+  $('#reasoning').textContent = '';
+  $('#reasoning').style.display = 'none';
+  $('#status').innerHTML = '生成中<span class="dots"></span>';
+  loadSources(word, gloss);
+  loadGlobal(word, gloss);
+
+  try{
+    const resp = await fetch('/api/analyze', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({word, gloss, model: $('#model').value})
+    });
+    if(!resp.ok){
+      const j = await resp.json().catch(()=>({}));
+      const map = {access_secret_missing:'后端未配置 Access Secret。',
+                   rate_limited:'请求过于频繁，请稍后再试。',
+                   word_invalid:'请输入 1–64 字符的英文单词。'};
+      alertBox('err', map[j.error] || ('分析失败（' + resp.status + '）。'));
+      $('#status').textContent = '';
+      return;
+    }
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while(true){
+      const {value, done} = await reader.read();
+      if(done) break;
+      buf += dec.decode(value, {stream:true});
+      const blocks = buf.split('\n\n');
+      buf = blocks.pop();
+      for(const b of blocks){
+        let ev = 'message', data = '';
+        for(const line of b.split('\n')){
+          if(line.startsWith('event:')) ev = line.slice(6).trim();
+          else if(line.startsWith('data:')) data += line.slice(5).trim();
+        }
+        if(!data) continue;
+        let o; try{ o = JSON.parse(data); }catch{ continue; }
+        if(ev === 'content'){ rawDoc += o.text; paint(); }
+        else if(ev === 'reasoning'){
+          const r = $('#reasoning');
+          r.style.display = 'block';
+          r.textContent += o.text;
+          r.scrollTop = r.scrollHeight;
+        }
+        else if(ev === 'meta' && o.source_count === 0)
+          alertBox('warn','站内未检索到相关讨论，档案仅基于模型知识，请留意「待核查」标注。');
+        else if(ev === 'error') alertBox('err', esc(o.message || '生成出错。'));
+        else if(ev === 'done'){
+          $('#status').textContent = o.ok ? '已完成' : '未完成';
+          if(o.ok && !rawDoc.trim()) alertBox('warn','上游返回空内容，未生成档案。');
+        }
+      }
+    }
+    paint();
+    /* 生成成功才记入历史，避免把失败或空档案写进统计 */
+    if(rawDoc.trim()){
+      const p = splitDoc(rawDoc);
+      const im = p.word.match(/\/[^/]*\//);
+      hAdd(word, extractMorphs(p.secs['一']), im ? im[0] : '');
+    }
+  }catch{
+    alertBox('err','连接中断，档案可能不完整。');
+    $('#status').textContent = '已中断';
+  }finally{
+    streaming = false;
+    msBusy(false);
+    $('#go').disabled = false;
+    loadQuota();
+  }
+});
+
+/* ================= 主题切换 ================= */
+const root = document.documentElement;
+const tBtn = $('#themeToggle');
+function syncTheme(){
+  const light = root.classList.contains('light');
+  /* 图标表示「点击后会切到什么」 */
+  tBtn.textContent = light ? '🌙' : '☀️';
+  tBtn.setAttribute('aria-label', light ? '切换到深色模式' : '切换到浅色模式');
+  tBtn.title = tBtn.getAttribute('aria-label');
+  tBtn.setAttribute('aria-pressed', String(light));
+}
+tBtn.addEventListener('click', ()=>{
+  root.classList.toggle('light');
+  try{ localStorage.setItem('wa-theme',
+    root.classList.contains('light') ? 'light' : 'dark'); }catch{}
+  syncTheme();
+});
+/* 未手动选择过时，跟随系统切换 */
+try{
+  window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', e => {
+    if(localStorage.getItem('wa-theme')) return;
+    root.classList.toggle('light', e.matches);
+    syncTheme();
+  });
+}catch{}
+syncTheme();
+
+$('#login').addEventListener('click', ()=> location.href = '/auth/login');
+$('#logout').addEventListener('click', async ()=>{
+  await fetch('/auth/logout', {method:'POST'});
+  location.reload();
+});
+
+loadConfig(); loadQuota(); renderHistory();
+/* 动图素材 src 走 msSrc，减少动态偏好下自动换静态首帧；
+   头图 headpng.webp 是静态图，无需切换，由 HTML 与 msBusy 直接指定。 */
+$('#msHead').setAttribute('src', msSrc('standby'));
+</script>
+</body>
+</html>

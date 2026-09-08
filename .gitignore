@@ -1,0 +1,10 @@
+# 凭证绝不进仓库
+.env
+.env.*
+!.env.example
+*.pid
+__pycache__/
+*.pyc
+
+# 刘看山素材原始压缩包：已解压并优化到 static/img/，源包不进仓库、不进部署镜像
+pngs/
