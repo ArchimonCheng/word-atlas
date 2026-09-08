@@ -46,6 +46,8 @@ Word Atlas 把站内讨论作为档案的来源层：搜索结果既喂给直答
 
 不强制登录，核心功能无需授权即可完整使用。也可以点击页面上方的 🔑 填入你自己的 Access Secret，之后检索按你的额度计、不依赖部署者配置。
 
+未登录且未自填 Secret 时，每个浏览器有 2 次「公共查询」机会（消耗部署者环境变量的额度），用完会弹窗引导自填；开发者账号直答额度耗尽时也会弹窗提示改用用户自己的 Secret。
+
 
 ## 使用的知乎开放能力
 
@@ -135,6 +137,7 @@ python3 tests/test_oauth_flow.py
 - 容器构建成功并实际运行，以非 root（uid 10001）启动，端点全通
 - OAuth 代码路径 44/44 通过（对 mock 上游，`python3 tests/test_oauth_flow.py`）：回调兼容 `authorization_code` 与 `code`、token 表单字段名为 `code`、`grant_type` 固定值、`X-OAuth-Token` 与 Access Secret 同时发送、App Key 不进请求头、token 失效返回 401 且不回退本人账号
 - 用户自填 Access Secret 17/17 通过（对 mock 上游，`python3 tests/test_user_secret.py`）：显式 secret 优先、空 secret 回退环境变量、缓存按 secret 指纹隔离、清除后回退、存 secret 不返回明文只返回指纹、过长 secret 拒绝
+- 公共额度耗尽检测 5/5 通过（`python3 tests/test_quota_exhausted.py`）：公共 secret 的直答额度为 0 时返回 429 `quota_exhausted` 并提前拦截、自填 secret 不触发公共额度检测
 - 会话 Cookie：`Path` / `HttpOnly` / `SameSite` / `Secure` 四属性齐备；`COOKIE_SECURE` 判定矩阵 8 种组合（协议推断、显式覆盖、大小写、无效值回落）均符合预期，且设置与清除两处属性一致
 - 伪造 `wa_session` cookie 被拒（401），不做猜测性放行
 - OAuth 环境变量真实路径：填入三项后 `oauth_enabled` 由 false 翻为 true，`/auth/login` 正确 302 到 `openapi.zhihu.com/authorize`，`redirect_uri` 经 percent-encoding，App Key 在诊断接口只以指纹出现

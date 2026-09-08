@@ -709,6 +709,25 @@ class Handler(BaseHTTPRequestHandler):
         model = MODELS.get(payload.get("model") or "deep", MODELS["deep"])
         gloss = (payload.get("gloss") or "").strip()[:32]
 
+        # 公共 secret（未自填）时，检查开发者直答额度，耗尽则明确报错引导自填。
+        # 用户自填的 secret 走用户自己的额度，此处不拦截。
+        if secret == ACCESS_SECRET and ACCESS_SECRET:
+            qr, _ = CACHE.get_or_call(
+                f"quota:{secret_scope(secret)}", lambda: fetch_quota(secret=secret))
+            if qr.get("ok"):
+                for q in (qr.get("data") or []):
+                    if q.get("APIID") == "zhida_openai":
+                        remaining = q.get("RemainingQuota")
+                        try:
+                            remaining = int(remaining) if remaining is not None else 0
+                        except (ValueError, TypeError):
+                            remaining = 0
+                        if remaining <= 0:
+                            return self._json(429, {
+                                "error": "quota_exhausted",
+                                "message": "开发者账号余量已耗尽，请使用用户 Access Secret"})
+                        break
+
         # 缓存键与 /api/sources 保持一致，避免同一词被查两次白耗额度
         src, _ = CACHE.get_or_call(f"src:{secret_scope(secret)}:{word.lower()}:{gloss}",
                                    lambda: fetch_sources(word, gloss, secret=secret))

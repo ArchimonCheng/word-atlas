@@ -289,6 +289,19 @@
   #secretStatus{font-size:12.5px;color:var(--muted)}
   .secret-help{font-size:12.5px;color:var(--link);text-decoration:none;white-space:nowrap}
   .secret-help:hover{text-decoration:underline}
+  /* ---------- 引导弹窗 ---------- */
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);
+    display:flex;align-items:center;justify-content:center;z-index:100}
+  .modal-backdrop[hidden]{display:none}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    max-width:460px;width:calc(100% - 40px);padding:22px 24px;box-shadow:0 20px 60px var(--sh)}
+  .modal h3{margin:0 0 10px;font-size:17px;font-weight:700}
+  .modal p{margin:0 0 18px;color:var(--fg2);font-size:14px;line-height:1.7}
+  .modal-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+  .btn{display:inline-block;font:inherit;cursor:pointer;border-radius:8px;
+    border:1px solid var(--line);background:var(--btn);color:var(--fg);
+    padding:8px 14px;font-size:13.5px;text-decoration:none}
+  .btn:hover{border-color:var(--lineHi);background:var(--btnHover)}
   button.small{padding:8px 14px;font-size:13.5px}
   .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
@@ -334,6 +347,19 @@
       <a class="secret-help" href="https://developer.zhihu.com/profile"
          target="_blank" rel="noopener"
          title="前往 developer.zhihu.com/profile 登录后点击「申请新 Access Secret」，复制后粘贴到左侧输入框">如何申请？</a>
+    </div>
+  </div>
+
+  <div id="secretModal" class="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="secretModalTitle">
+      <h3 id="secretModalTitle"></h3>
+      <p id="secretModalBody"></p>
+      <div class="modal-actions">
+        <a class="btn primary" href="https://developer.zhihu.com/profile"
+           target="_blank" rel="noopener">如何申请</a>
+        <button id="secretModalGo" class="primary small">去填写</button>
+        <button id="secretModalClose">关闭</button>
+      </div>
     </div>
   </div>
 
@@ -742,7 +768,17 @@ async function loadConfig(){
 }
 
 /* ================= 用户自填 Access Secret ================= */
+let userSecretConfigured = false;
+const PUB_KEY = 'wa_pub_used', PUB_LIMIT = 2;
+function pubUsed(){ try{ return parseInt(localStorage.getItem(PUB_KEY)||'0',10)||0; }catch{ return 0; } }
+function pubAdd(){ try{ localStorage.setItem(PUB_KEY, String(pubUsed()+1)); }catch{} }
+function showSecretModal(title, body){
+  $('#secretModalTitle').textContent = title;
+  $('#secretModalBody').textContent = body;
+  $('#secretModal').hidden = false;
+}
 function updateSecretUI(c){
+  userSecretConfigured = !!c.user_secret_configured;
   const st = $('#secretStatus');
   if(c.user_secret_configured){
     st.textContent = '当前使用：你的 Access Secret';
@@ -782,6 +818,15 @@ $('#secretClear').addEventListener('click', async ()=>{
     if(!r.ok){ alertBox('err','清除失败（HTTP '+r.status+'）'); return; }
     await loadConfig();
   }catch{ alertBox('err','清除失败，网络错误'); }
+});
+$('#secretModalClose').addEventListener('click', ()=> $('#secretModal').hidden = true);
+$('#secretModalGo').addEventListener('click', ()=>{
+  $('#secretModal').hidden = true;
+  $('#secretPanel').hidden = false;
+  $('#secretInput').focus();
+});
+$('#secretModal').addEventListener('click', e => {
+  if(e.target === e.currentTarget) e.currentTarget.hidden = true;
 });
 
 /* ================= 额度 ================= */
@@ -992,6 +1037,11 @@ $('#form').addEventListener('submit', async e => {
   const word = $('#word').value.trim();
   const gloss = $('#gloss').value.trim();
   if(!word) return;
+  if(!userSecretConfigured && pubUsed() >= PUB_LIMIT){
+    showSecretModal('已用完 ' + PUB_LIMIT + ' 次免费查询',
+      '公共查询次数已用完，请使用你自己的 Access Secret 继续检索，额度独立计费。');
+    return;
+  }
 
   clearAlert();
   streaming = true;
@@ -1011,6 +1061,12 @@ $('#form').addEventListener('submit', async e => {
     });
     if(!resp.ok){
       const j = await resp.json().catch(()=>({}));
+      if(j.error === 'quota_exhausted'){
+        showSecretModal('开发者账号余量已耗尽',
+          '开发者账号的直答额度已用完，请使用你自己的 Access Secret 继续检索。');
+        $('#status').textContent = '';
+        return;
+      }
       const map = {access_secret_missing:'后端未配置 Access Secret。',
                    rate_limited:'请求过于频繁，请稍后再试。',
                    word_invalid:'请输入 1–64 字符的英文单词。'};
@@ -1048,6 +1104,7 @@ $('#form').addEventListener('submit', async e => {
         else if(ev === 'done'){
           $('#status').textContent = o.ok ? '已完成' : '未完成';
           if(o.ok && !rawDoc.trim()) alertBox('warn','上游返回空内容，未生成档案。');
+          if(o.ok && !userSecretConfigured) pubAdd();
         }
       }
     }
