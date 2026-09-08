@@ -69,16 +69,19 @@ Word Atlas 把站内讨论作为档案的来源层：搜索结果既喂给直答
 - **列举分行**：同根词族、高频搭配、例句等多项内容逐项独立成行，不挤在一行里用标点分隔
 - **深浅主题**：默认跟随系统，手动选择后记住偏好；浅色模式下卡片与词根配色换用加深变体
 - **历史与词根统计**：左侧「词根 → 词」按出现次数排横条图，点击可筛选；右侧「词 → 词根」列出词素与 IPA，点词名可重新生成
+- **Access Secret 自填与引导**：页面上方 🔑 展开面板，填入自己的 Secret 即按用户额度检索；未自填时每浏览器限 2 次公共查询，用完弹窗引导（含「如何申请」链接）；开发者直答额度耗尽时也弹窗提示
 
 ## 技术方案
 
 后端 Python 标准库 `http.server` + `requests`，无 Web 框架依赖；前端原生 HTML/CSS/JS，无构建步骤、无前端依赖。`python3 app.py` 即可启动。
 
 ```
-app.py                    后端：直答 SSE 代理、两类搜索、额度、OAuth
-static/index.html         前端：渲染、卡片、历史统计、主题
-tests/test_oauth_flow.py  OAuth 全流程测试（mock 上游）
-Containerfile             容器构建，平台通用
+app.py                          后端：直答 SSE 代理、两类搜索、额度、OAuth
+static/index.html               前端：渲染、卡片、历史统计、主题
+tests/test_oauth_flow.py        OAuth 全流程测试（mock 上游）
+tests/test_user_secret.py       用户自填 Secret 测试（mock 上游）
+tests/test_quota_exhausted.py   公共额度耗尽检测测试（mock 上游）
+Containerfile                   容器构建，平台通用
 ```
 
 关键实现点：
@@ -90,6 +93,7 @@ Containerfile             容器构建，平台通用
 - **额度保护**：搜索与额度查询走 15 分钟 TTL 缓存 + 同 key 请求去重（双重检查加锁）；分析接口按 IP 限流 8 次/分钟，其余接口 20 次/分钟。两类搜索使用独立缓存键前缀，同一词不会被重复查询。
 - **凭证边界**：Access Secret、App Key、OAuth Token 只存在于后端进程环境与服务端会话；`/api/health` 诊断只暴露来源、是否配置、长度与 SHA-256 短前缀。前端任何响应都不含凭证。
 - **按请求 Access Secret**：用户可在页面上方 🔑 填入自己的 Access Secret，后端存到会话（仅内存，进程重启即失效），之后该用户的检索、额度查询、直答调用都用这份 secret，未填时回退环境变量。缓存与额度按 secret 指纹隔离，不同用户互不串。清除即回退环境变量。
+- **公共查询限额与额度耗尽**：未自填 Secret 时每浏览器限 2 次公共查询（前端 localStorage 计数，用完弹窗引导自填）；后端在发直答前检查公共 secret 的 `zhida_openai` 剩余额度，为 0 时返回 429 `quota_exhausted` 并提前拦截，不浪费无效调用
 - **访问日志遮蔽**：默认请求行含 query，`/auth/callback?authorization_code=…` 会把授权码写进日志。日志会被打包、截图或贴进 issue，因此对 `authorization_code`、`code`、`token`、`app_key`、`state` 等键的值统一替换为 `<redacted:N>`，保留键名与长度便于排查，非敏感参数（如 `word`）原样保留。
 - **会话 Cookie 的 `Secure`**：默认跟随 `ZHIHU_OAUTH_REDIRECT_URI` 的协议——回调是 `https://` 时自动开启，本地 `http` 调试保持可用（若在本地强开，浏览器会直接丢弃 cookie，登录表现为「点了没反应」）。可用 `COOKIE_SECURE=1/0` 显式覆盖；应用自身跑 http、由反向代理终止 TLS 时必须手动置 `1`。设置与清除两处共用同一构造函数，避免属性不一致导致登出时 cookie 清不掉。`/api/health` 暴露 `cookie_secure`，部署后可直接确认。
 - **降级行为**：未配置 Access Secret 返回 503 并在页面显式提示；未配置 OAuth 时隐藏登录入口但保留核心功能；检索为空时提示档案仅基于模型知识；上游超时、流式中途报错、返回空内容都有对应提示，不静默失败。
