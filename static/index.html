@@ -1039,7 +1039,7 @@ $('#form').addEventListener('submit', async e => {
   if(!word) return;
   if(!userSecretConfigured && pubUsed() >= PUB_LIMIT){
     showSecretModal('已用完 ' + PUB_LIMIT + ' 次免费查询',
-      '公共查询次数已用完，请使用你自己的 Access Secret 继续检索，各账号额度独立、均为知乎赠送。');
+      '公共查询次数已用完，请填写你的 Access Secret 以继续检索。Access Secret 为知乎数据开放平台的令牌，仅临时储存在当前会话中，不会泄漏。');
     return;
   }
 
